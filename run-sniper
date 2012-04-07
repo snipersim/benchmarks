@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+
+import sys, os, time, getopt, subprocess, pipes
+sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'scheduler'))
+import graphite_tools
+
+
+abspath = lambda d: os.path.abspath(os.path.join(d))
+
+HOME = abspath(os.path.dirname(__file__))
+
+
+modules = ('splash2', 'parsec', 'local')
+
+
+def usage():
+  print 'Run benchmark under the Sniper simulator'
+  print 'Usage:'
+  print '  %s  -p <program>  -i <inputsize (test)> -n <nthreads (1)>  -m <machines (1)>  -d <outputdir (.)>  -c <config-file>  -r <sniper-root-dir>  -g <options>' % sys.argv[0]
+  print 'Benchmarks:'
+  for module in modules:
+    module = __import__(module)
+    print ' ', module.__name__ + ':'
+    print '   ', ' '.join('%s-%s' % (module.__name__, bm) for bm in module.allbenchmarks())
+  sys.exit(2)
+
+program = ''
+inputsize = 'test'
+nthreads = 1
+machines = 'localhost'
+outputdir = '.'
+rungraphiteoptions = []
+graphiterootdir = os.getenv('GRAPHITE_ROOT')
+roi_only = True
+saverun = False
+need_curdir = False
+
+if not sys.argv[1:]:
+  usage()
+
+opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats' ]
+
+try:
+  opts, args = getopt.getopt(sys.argv[1:], "hp:i:n:m:s:d:c:r:g:", [ "no-roi", "save-run" ] + opts_passthrough)
+except getopt.GetoptError, e:
+  # print help information and exit:
+  print e
+  usage()
+for o, a in opts:
+  if o == '-h':
+    usage()
+    sys.exit()
+  if o == '-p':
+    program = a
+  if o == '-i':
+    inputsize = a
+  if o == '-n':
+    nthreads = int(a)
+  if o == '-m':
+    machines = a
+  if o == '-s':
+    rungraphiteoptions.append('-s ' + pipes.quote(a))
+    need_curdir = True
+  if o == '-d':
+    outputdir = a
+  if o == '-c':
+    if os.path.exists(a):
+      a = os.path.abspath(os.path.join(a))
+    rungraphiteoptions.append('-c ' + pipes.quote(a))
+  if o == '-g':
+    rungraphiteoptions.append('-g ' + pipes.quote(a))
+  if o == '-r':
+    graphiterootdir = a
+  if o == '--no-roi':
+    roi_only = False
+  if o == '--save-run':
+    saverun = True
+  if o.startswith('--') and o[2:] in opts_passthrough:
+    rungraphiteoptions.append(o)
+
+if roi_only:
+  #rungraphiteoptions.append('--roi')
+  # while there are still sims starting with an old Graphite gitid, keep this variant
+  rungraphiteoptions.append('-g --general/magic=true')
+
+if need_curdir:
+  # Pass current directory to Graphite, which can use it to find more script files
+  rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
+
+if not program:
+  usage()
+
+
+package, program = program.rsplit("-",1)
+
+if saverun:
+  # Create the base directory
+  runpathbase = os.path.join(os.getenv('BENCHMARKS_ROOT'),'runs','%s-%s-%s-%s'%(package,program,inputsize,nthreads))
+  os.system('mkdir -p "%s"' % abspath(runpathbase))
+  # Find the next available run directory
+  runnum = 1
+  while True:
+    runpath = os.path.join(runpathbase,str(runnum))
+    if os.path.exists(runpath):
+      runnum = runnum+1
+    else:
+      break
+  # Use this run directory
+  outputdir = abspath(runpath)
+  os.system('mkdir -p "%s"' % outputdir)
+  # Update the symlink to the latest entry
+  symlink = os.path.join(runpathbase,'latest')
+  try:
+    os.remove(symlink)
+  except:
+    pass
+  os.symlink(str(runnum),symlink)
+
+program = __import__(package).Program(program, nthreads, inputsize)
+
+
+os.environ['LD_LIBRARY_PATH'] = '%s:%s/libs' % (os.environ.get('LD_LIBRARY_PATH', ''), HOME)
+
+outputdir = abspath(outputdir)
+runcmd = abspath(os.path.join(graphiterootdir, 'run-sniper'))
+
+graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+graphitecmd += ' ' + ' '.join(rungraphiteoptions)
+graphitecmd += ' ' + program.rungraphiteoptions()
+graphitecmd += ' -- '
+
+
+try:
+  rc = program.run(graphitecmd)
+  sys.exit(rc)
+except Exception, e:
+  print e
+  graphite_tools.kill_children()
+  sys.exit(-1)
