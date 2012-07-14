@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, os, time, getopt, subprocess, pipes
+import sys, os, time, getopt, subprocess, pipes, tempfile, threading
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'scheduler'))
 import graphite_tools
 
@@ -10,7 +10,7 @@ abspath = lambda d: os.path.abspath(os.path.join(d))
 HOME = abspath(os.path.dirname(__file__))
 
 
-modules = ('splash2', 'parsec', 'local')
+from suites import modules
 
 
 def usage():
@@ -26,22 +26,27 @@ def usage():
 
 program = ''
 inputsize = 'test'
+benchmark_options = []
 nthreads = 1
 machines = 'localhost'
 outputdir = '.'
 rungraphiteoptions = []
 graphiterootdir = os.getenv('GRAPHITE_ROOT')
 roi_only = True
+roi_script = False
 saverun = False
+saverun_prefix = ''
+saverun_second_stage = False
 need_curdir = False
+trace = []
 
 if not sys.argv[1:]:
   usage()
 
-opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats' ]
+opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats' ]
 
 try:
-  opts, args = getopt.getopt(sys.argv[1:], "hp:i:n:m:s:d:c:r:g:", [ "no-roi", "save-run" ] + opts_passthrough)
+  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
 except getopt.GetoptError, e:
   # print help information and exit:
   print e
@@ -54,6 +59,8 @@ for o, a in opts:
     program = a
   if o == '-i':
     inputsize = a
+  if o == '-B':
+    benchmark_options.append(a)
   if o == '-n':
     nthreads = int(a)
   if o == '-m':
@@ -64,7 +71,7 @@ for o, a in opts:
   if o == '-d':
     outputdir = a
   if o == '-c':
-    if os.path.exists(a):
+    if os.path.isfile(a):
       a = os.path.abspath(os.path.join(a))
     rungraphiteoptions.append('-c ' + pipes.quote(a))
   if o == '-g':
@@ -73,34 +80,37 @@ for o, a in opts:
     graphiterootdir = a
   if o == '--no-roi':
     roi_only = False
+  if o == '--roi-script':
+    roi_script = True
+    roi_only = False
   if o == '--save-run':
     saverun = True
+  if o == '--save-run-prefix':
+    saverun = True
+    saverun_prefix = a+'-'
+  if o == '--save-run-second-stage':
+    saverun_second_stage = a
   if o.startswith('--') and o[2:] in opts_passthrough:
     rungraphiteoptions.append(o)
-
-if roi_only:
-  #rungraphiteoptions.append('--roi')
-  # while there are still sims starting with an old Graphite gitid, keep this variant
-  rungraphiteoptions.append('-g --general/magic=true')
-
-if need_curdir:
-  # Pass current directory to Graphite, which can use it to find more script files
-  rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
-
-if not program:
-  usage()
+  if o == '--benchmarks':
+    for bm in a.split(','):
+      trace.append(bm.split('-'))
+    nthreads = 0
+    for package, programname, inputsize, app_nthreads in trace:
+      nthreads += int(app_nthreads)
 
 
-package, program = program.rsplit("-",1)
+if saverun_second_stage:
+  outputdir = saverun_second_stage
 
-if saverun:
+elif saverun:
   # Create the base directory
-  runpathbase = os.path.join(os.getenv('BENCHMARKS_ROOT'),'runs','%s-%s-%s-%s'%(package,program,inputsize,nthreads))
+  runpathbase = os.path.join(os.getenv('BENCHMARKS_ROOT'),'runs','%s-%s-%s'%(program,inputsize,nthreads))
   os.system('mkdir -p "%s"' % abspath(runpathbase))
   # Find the next available run directory
   runnum = 1
   while True:
-    runpath = os.path.join(runpathbase,str(runnum))
+    runpath = os.path.join(runpathbase,saverun_prefix+str(runnum))
     if os.path.exists(runpath):
       runnum = runnum+1
     else:
@@ -115,24 +125,120 @@ if saverun:
   except:
     pass
   os.symlink(str(runnum),symlink)
+  print '[SNIPER] Saving run to', runpath
 
-program = __import__(package).Program(program, nthreads, inputsize)
+  # Now run run-sniper again, with the directory we've just chosen, redirecting stdout and stderr
+  cmd = ' '.join(map(pipes.quote, sys.argv)) \
+      + ' --save-run-second-stage=%s' % pipes.quote(outputdir) \
+      + ' > >(tee %s)' % pipes.quote(os.path.join(outputdir, 'stdout.txt')) \
+      + ' 2> >(tee %s >&2)' % pipes.quote(os.path.join(outputdir, 'stderr.txt'))
+  os.system('bash -c %s' % pipes.quote(cmd))
+  sys.exit(0)
 
+
+# Sanity check: when no -r option is present to explicitly select a Graphite directory,
+#   and the current directory contains a Graphite binary that's not the same (after removing symlinks, etc.)
+#   as the one pointed to by GRAPHITE_ROOT, then we're probably in a branch but forgot to reset GRAPHITE_ROOT
+if graphiterootdir == os.getenv('GRAPHITE_ROOT'):
+  graphite_selected = os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))
+  graphite_here = os.path.realpath(os.path.join('lib', 'pin_sim.so'))
+  if os.path.exists(graphite_here) and graphite_selected != graphite_here:
+    print '\nWARNING: Graphite binary found in current directory, but set to use GRAPHITE_ROOT which points elsewhere!\n'
+    print '   current directory =', os.getcwd()
+    print '   using GRAPHITE_ROOT =', os.getenv('GRAPHITE_ROOT')
+    print ''
+    time.sleep(5)
+
+if roi_only:
+  rungraphiteoptions.append('--roi')
+if roi_script:
+  rungraphiteoptions.append('--roi-script')
+
+if need_curdir:
+  # Pass current directory to Graphite, which can use it to find more script files
+  rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
+
+if not program and not trace:
+  usage()
+
+if trace:
+  if max(map(lambda x:x[3], trace)) != 1:
+    rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=false')
+  else:
+    rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=true')
+  rungraphiteoptions.append('-g --traceinput/threads_to_start=1')
+  threads_per_core = map(lambda x:x[3], trace)
+  rungraphiteoptions.append('-g --traceinput/num_threads=%s' % (','.join(threads_per_core)))
+  rungraphiteoptions.append('-g --traceinput/num_apps=%u' % len(trace))
+  traces = {'': [], '_response': []}
+  basefname = 'run_benchmarks'
+  tracetempdir = tempfile.mkdtemp()
+  for t in range(nthreads):
+    for f in ('','_response'):
+      filename = os.path.join(tracetempdir, '%s%s.th%d.sift' % (basefname, f, t))
+      traces[f].append(filename)
+      os.mkfifo(filename)
+  for f, opt in (('','traces'),('_response','response-traces')):
+    rungraphiteoptions.append(('--%s=' % opt) + ','.join(traces[f]))
+
+outputdir = abspath(outputdir)
+os.chdir(outputdir)
 
 os.environ['LD_LIBRARY_PATH'] = '%s:%s/libs' % (os.environ.get('LD_LIBRARY_PATH', ''), HOME)
 
-outputdir = abspath(outputdir)
 runcmd = abspath(os.path.join(graphiterootdir, 'run-sniper'))
-
-graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
-graphitecmd += ' ' + ' '.join(rungraphiteoptions)
-graphitecmd += ' ' + program.rungraphiteoptions()
-graphitecmd += ' -- '
 
 
 try:
-  rc = program.run(graphitecmd)
+  rc=1
+  if not trace:
+    package, program = program.rsplit("-",1)
+    program = __import__(package).Program(program, nthreads, inputsize, benchmark_options)
+
+    graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+    graphitecmd += ' ' + ' '.join(rungraphiteoptions)
+    graphitecmd += ' ' + program.rungraphiteoptions()
+    graphitecmd += ' -- '
+
+    rc = program.run(graphitecmd)
+  else:
+    graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+    graphitecmd += ' ' + ' '.join(rungraphiteoptions)
+
+    out = open(os.path.join(outputdir,'tracerecorder.out'), 'w')
+    err = open(os.path.join(outputdir,'tracerecorder.err'), 'w')
+    p_graphite = subprocess.Popen([ 'bash', '-c', graphitecmd ], bufsize = 1, stdout = out, stderr = err)
+
+    startthread = 0
+    threads = []
+    for package, programname, inputsize, app_nthreads in trace:
+      app_nthreads = int(app_nthreads)
+      program = __import__(package).Program(programname, app_nthreads, inputsize)
+      if program.rungraphiteoptions():
+        print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
+        sys.exit(1)
+
+      tracecmd = '"%s" -o %s -e 1 -s %u -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), startthread)
+      t = threading.Thread(target = program.run, args = (tracecmd,))
+      threads.append(t)
+      startthread += app_nthreads
+
+    for t in threads:
+      t.start()
+    for t in threads:
+      t.join()
+    p_graphite.wait()
+    out.close(); err.close()
+    # Cleanup the pipes and temporary directory
+    for _f in ('','_response'):
+      for f in traces[_f]:
+        os.unlink(f)
+    os.rmdir(tracetempdir)
   sys.exit(rc)
+except KeyboardInterrupt, e:
+  print >> sys.stderr, '\nCtrl-C detected: Killing all child processes'
+  graphite_tools.kill_children()
+  sys.exit(-1)
 except Exception, e:
   print e
   graphite_tools.kill_children()

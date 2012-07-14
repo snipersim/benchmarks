@@ -1,6 +1,6 @@
 # A copy of this file is distributed with the binaries of Graphite and Benchmarks
 
-import sys, os, time, re, tempfile, timeout, traceback
+import sys, os, time, re, tempfile, timeout, traceback, collections
 try:
   import json
 except ImportError:
@@ -19,10 +19,7 @@ def get_results(jobid = None, resultsdir = None, partial = None, force = False):
   if jobid:
     if ic_invalid:
       raise RuntimeError('Cannot fetch results from server, make sure BENCHMARKS_ROOT points to a valid copy of benchmarks+iqlib')
-    if partial:
-      raise RuntimeError('Partial results not possible when loading from jobid')
-      # FIXME: could just download sim.stats from the server and re-parse that
-    results = ic.graphite_results(jobid)
+    results = ic.graphite_results(jobid, partial)
     simcfg = ic.job_output(jobid, 'sim.cfg', force)
   elif resultsdir:
     results = parse_results_from_dir(resultsdir, partial = partial)
@@ -30,9 +27,10 @@ def get_results(jobid = None, resultsdir = None, partial = None, force = False):
   else:
     raise ValueError('Need either jobid or resultsdir')
 
+  config = parse_config(simcfg)
   return {
-    'results': stats_process(results),
-    'config': parse_config(simcfg)
+    'config': config,
+    'results': stats_process(config, results),
   }
 
 
@@ -53,8 +51,8 @@ def get_name(jobid = None, resultsdir = None):
   }
 
 
-def stats_process(results):
-  ncores = [ int(r[2]) for r in results if r[0] == 'ncores'][0]
+def stats_process(config, results):
+  ncores = int(config['general/total_cores'])
   stats = {}
   for key, core, value in results:
      if core == -1:
@@ -62,8 +60,11 @@ def stats_process(results):
      else:
        if key not in stats:
          stats[key] = [0]*ncores
-       if core < ncores:
+       if core < len(stats[key]):
          stats[key][core] = value
+       else:
+         nskipped = core - len(stats[key])
+         stats[key] += [0]*nskipped + [value]
   # add computed stats
   try:
     l1access = sum(stats['L1-D.load-misses']) + sum(stats['L1-D.store-misses'])
@@ -73,16 +74,24 @@ def stats_process(results):
     pass
   stats['pthread_locks_contended'] = float(sum(stats.get('pthread.pthread_mutex_lock_contended', [0]))) / (sum(stats.get('pthread.pthread_mutex_lock_count', [0])) or 1)
   # femtosecond to cycles conversion
-  freq = stats['corefreq']
-  stats['fs_to_cycles'] = freq / 1e15
+  freq = [ 1e9 * float(get_config(config, 'perf_model/core/frequency', idx)) for idx in range(ncores) ]
+  stats['fs_to_cycles_cores'] = map(lambda f: f / 1e15, freq)
+  # Backwards compatible version returning fs_to_cycles for core 0, for heterogeneous configurations fs_to_cycles_cores needs to be used
+  stats['fs_to_cycles'] = stats['fs_to_cycles_cores'][0]
   # DVFS-enabled runs: emulate cycle_count asuming constant (initial) frequency
   if 'performance_model.elapsed_time' in stats and 'performance_model.cycle_count' not in stats:
-    stats['performance_model.cycle_count'] = map(lambda t: stats['fs_to_cycles'] * t, stats['performance_model.elapsed_time'])
+    stats['performance_model.cycle_count'] = [ stats['fs_to_cycles_cores'][idx] * stats['performance_model.elapsed_time'][idx] for idx in range(ncores) ]
   # IPC
   stats['ipc'] = sum(stats.get('performance_model.instruction_count', [0])) / float(sum(stats.get('performance_model.cycle_count', [0])) or 1e16)
 
   return stats
 
+
+class DefaultValue:
+  def __init__(self, value):
+    self.val = value
+  def __call__(self):
+    return self.val
 
 # Parse sim.cfg, read from file or from ic.job_output(jobid, 'sim.cfg'), into a dictionary
 def parse_config(simcfg):
@@ -91,11 +100,39 @@ def parse_config(simcfg):
   cp.readfp(cStringIO.StringIO(str(simcfg)))
   cfg = {}
   for section in cp.sections():
-    for key, value in cp.items(section):
+    for key, value in sorted(cp.items(section)):
+      # Run through items sorted by key, so the default comes before the array one
+      # Then cut off the [] array markers as they are only used to prevent duplicate option names which ConfigParser doesn't handle
+      if key.endswith('[]'):
+        key = key[:-2]
       if len(value) > 2 and value[0] == '"' and value[-1] == '"':
         value = value[1:-1]
-      cfg['/'.join((section, key))] = value
+      key = '/'.join((section, key))
+      if key in cfg:
+        defval = cfg[key]
+        cfg[key] = collections.defaultdict(DefaultValue(defval))
+        for i, v in enumerate(value.split(',')):
+          if v: # Only fill in entries that have been provided
+            cfg[key][i] = v
+      else: # If there has not been a default value provided, require all array data be populated
+        if ',' in value:
+          cfg[key] = []
+          for i, v in enumerate(value.split(',')):
+            cfg[key].append(v)
+        else:
+          cfg[key] = value
   return cfg
+
+
+def get_config(config, key, index = None):
+  is_hetero = (type(config[key]) == collections.defaultdict)
+  if index is None:
+    assert not is_hetero
+    return config[key]
+  elif is_hetero:
+    return config[key][index]
+  else:
+    return config[key]
 
 
 def parse_results((simstats, simstatsbase, simstatsdelta, simout, simcfg, stdout, graphiteout, powerpy), partial = None):
@@ -105,8 +142,8 @@ def parse_results((simstats, simstatsbase, simstatsdelta, simout, simcfg, stdout
   simcfg = parse_config(simcfg)
   ncores = int(simcfg['general/total_cores'])
 
-  results.append(('ncores', -1, ncores))
-  results.append(('corefreq', -1, 1e9 * float(simcfg['perf_model/core/frequency'])))
+  results += [ ('ncores', -1, ncores) ]
+  results += [ ('corefreq', idx, 1e9 * float(get_config(simcfg, 'perf_model/core/frequency', idx))) for idx in range(ncores) ]
 
   ## stdout.txt
   if '[SNIPER]' in stdout:
@@ -119,9 +156,9 @@ def parse_results((simstats, simstatsbase, simstatsdelta, simout, simcfg, stdout
   except (IndexError, ValueError):
     walltime = 0
   try:
-    roi = [ line for line in stdout if line.startswith('[%s:0] Simulated' % marker)][0]
-    roi = re.match('\[%s:0\] Simulated ([0-9.]+)M instructions @ ([0-9.]+) KIPS \(([0-9.]+) KIPS / target core' % marker, roi)
-    roi = { 'instrs': float(roi.group(1))*1e6, 'ipstotal': float(roi.group(2))*1e3, 'ipscore': float(roi.group(3))*1e3 }
+    roi = [ line for line in stdout if re.match('^\[%s(:0)?\] Simulated' % marker, line)][0]
+    roi = re.match('\[%s(:0)?\] Simulated ([0-9.]+)M instructions @ ([0-9.]+) KIPS \(([0-9.]+) KIPS / target core' % marker, roi)
+    roi = { 'instrs': float(roi.group(2))*1e6, 'ipstotal': float(roi.group(3))*1e3, 'ipscore': float(roi.group(4))*1e3 }
   except (IndexError, ValueError):
     roi = { 'instrs': 0, 'ipstotal': 0, 'ipscore': 0 }
 
@@ -153,13 +190,18 @@ def parse_results((simstats, simstatsbase, simstatsdelta, simout, simcfg, stdout
   stats = dict([ (line.split()[0][len(k2+'.'):], long(line.split()[1])) for line in simstats if line.startswith(k2) ])
 
   if simstatsbase and simstatsdelta:
+    # End stats may not be empty, check before adding the defaults
+    if not stats:
+      raise ValueError("Could not find stats in sim.stats (%s:%s)" % (k1, k2))
     for line in simstatsbase:
+      if not line.strip(): continue
       for c in range(ncores):
-        stats_begin.setdefault(line.partition('[]')[0] + ('[%u]' % c) + line.partition('[]')[2], 0)
-        stats.setdefault(line.partition('[]')[0] + ('[%u]' % c) + line.partition('[]')[2], 0)
-
-  if not stats or not stats_begin:
-    raise ValueError("Could not find stats in sim.stats (%s:%s)" % (k1, k2))
+        key = line.split('[]')[0] + ('[%u]' % c) + line.split('[]', 1)[1]
+        stats_begin.setdefault(key, 0)
+        stats.setdefault(key, 0)
+  else:
+    if not stats or not stats_begin:
+      raise ValueError("Could not find stats in sim.stats (%s:%s)" % (k1, k2))
 
   for key, value in stats.items():
     if key in stats_begin:
