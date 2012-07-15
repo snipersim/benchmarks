@@ -162,6 +162,9 @@ if not program and not trace:
   usage()
 
 if trace:
+  rungraphiteoptions.append('--trace-manual')
+  rungraphiteoptions.append('-g --traceinput/emulate_syscalls=true')
+  rungraphiteoptions.append('-g --traceinput/enabled=true')
   if max(map(lambda x:x[3], trace)) != 1:
     rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=false')
   else:
@@ -179,7 +182,8 @@ if trace:
       traces[f].append(filename)
       os.mkfifo(filename)
   for f, opt in (('','traces'),('_response','response-traces')):
-    rungraphiteoptions.append(('--%s=' % opt) + ','.join(traces[f]))
+    for i, t in enumerate(traces[f]):
+      rungraphiteoptions.append('-g --traceinput/thread%s_%u=%s' % (f, i, t))
 
 outputdir = abspath(outputdir)
 os.chdir(outputdir)

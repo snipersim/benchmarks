@@ -127,12 +127,21 @@ def parse_config(simcfg):
 def get_config(config, key, index = None):
   is_hetero = (type(config[key]) == collections.defaultdict)
   if index is None:
-    assert not is_hetero
-    return config[key]
+    if is_hetero:
+      return config[key].default_factory()
+    else:
+      return config[key]
   elif is_hetero:
     return config[key][index]
   else:
     return config[key]
+
+
+def get_config_default(config, key, defaultval, index = None):
+  if key in config:
+    return get_config(config, key, index)
+  else:
+    return defaultval
 
 
 def parse_results((simstats, simstatsbase, simstatsdelta, simout, simcfg, stdout, graphiteout, powerpy), partial = None):
