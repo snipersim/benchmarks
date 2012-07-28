@@ -6,7 +6,9 @@ ifeq ($(GRAPHITE_ROOT),)
 $(error "Error: The GRAPHITE_ROOT environment variable is not set.")
 endif
 
-all:
+.PHONY: all clean dependencies
+
+all: dependencies
 	make -C tools/hooks
 	make -C splash2
 	make -C parsec
@@ -17,3 +19,6 @@ clean:
 	make -C splash2 clean
 	make -C parsec clean
 	make -C local clean
+
+dependencies:
+	$(BENCHMARKS_ROOT)/tools/scripts/checkdependencies.py
