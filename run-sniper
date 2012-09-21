@@ -21,7 +21,11 @@ def usage():
   for module in modules:
     module = __import__(module)
     print ' ', module.__name__ + ':'
-    print '   ', ' '.join('%s-%s' % (module.__name__, bm) for bm in module.allbenchmarks())
+    try:
+      print '   ', ' '.join('%s-%s' % (module.__name__, bm) for bm in module.allbenchmarks())
+    except TypeError:
+      print 'INFO: %s not downloaded yet, run make to download its components.' % module.__name__
+
   sys.exit(2)
 
 program = ''
@@ -31,7 +35,7 @@ nthreads = 1
 machines = 'localhost'
 outputdir = '.'
 rungraphiteoptions = []
-graphiterootdir = os.getenv('GRAPHITE_ROOT')
+graphiterootdir = os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT')
 roi_only = True
 roi_script = False
 saverun = False
@@ -46,7 +50,7 @@ if not sys.argv[1:]:
 opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats' ]
 
 try:
-  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
+  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
 except getopt.GetoptError, e:
   # print help information and exit:
   print e
@@ -83,6 +87,10 @@ for o, a in opts:
   if o == '--roi-script':
     roi_script = True
     roi_only = False
+  if o == '--roi':
+    # --roi is the default so it isn't really needed, but if we remove it from getopt's list,
+    # it will interpret --roi as a prefix for --roi-script which will be completely wrong
+    roi_only = True
   if o == '--save-run':
     saverun = True
   if o == '--save-run-prefix':
@@ -99,6 +107,48 @@ for o, a in opts:
     for package, programname, inputsize, app_nthreads in trace:
       nthreads += int(app_nthreads)
 
+
+if not graphiterootdir:
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper'))):
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
+  print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
+  sys.exit(1)
+
+if not os.getenv('BENCHMARKS_ROOT'):
+  benchmarksrootdir = os.path.realpath(os.curdir)
+  if os.path.exists(benchmarksrootdir):
+    print 'NOTICE: Using "%s" as the BENCHMARKS_ROOT directory.' % benchmarksrootdir
+    os.putenv('BENCHMARKS_ROOT', benchmarksrootdir)
+  else:
+    print '\nERROR: Unable to determine your BENCHMARKS_ROOT directory. Please set it before running a benchmark.\n'
+    sys.exit(1)
+
+if not graphiterootdir:
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper'))):
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
+  print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
+  sys.exit(1)
+
+if not os.getenv('BENCHMARKS_ROOT'):
+  benchmarksrootdir = os.path.realpath(os.curdir)
+  if os.path.exists(benchmarksrootdir):
+    print 'NOTICE: Using "%s" as the BENCHMARKS_ROOT directory.' % benchmarksrootdir
+    os.putenv('BENCHMARKS_ROOT', benchmarksrootdir)
+  else:
+    print '\nERROR: Unable to determine your BENCHMARKS_ROOT directory. Please set it before running a benchmark.\n'
+    sys.exit(1)
 
 if saverun_second_stage:
   outputdir = saverun_second_stage
@@ -139,15 +189,18 @@ elif saverun:
 # Sanity check: when no -r option is present to explicitly select a Graphite directory,
 #   and the current directory contains a Graphite binary that's not the same (after removing symlinks, etc.)
 #   as the one pointed to by GRAPHITE_ROOT, then we're probably in a branch but forgot to reset GRAPHITE_ROOT
-if graphiterootdir == os.getenv('GRAPHITE_ROOT'):
+if graphiterootdir == (os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT')):
   graphite_selected = os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))
   graphite_here = os.path.realpath(os.path.join('lib', 'pin_sim.so'))
   if os.path.exists(graphite_here) and graphite_selected != graphite_here:
-    print '\nWARNING: Graphite binary found in current directory, but set to use GRAPHITE_ROOT which points elsewhere!\n'
+    print '\nWARNING: Sniper binary found in current directory, but set to use SNIPER_ROOT which points elsewhere!\n'
     print '   current directory =', os.getcwd()
-    print '   using GRAPHITE_ROOT =', os.getenv('GRAPHITE_ROOT')
+    print '   using SNIPER_ROOT/GRAPHITE_ROOT =', (os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT'))
     print ''
     time.sleep(5)
+else:
+  os.putenv('SNIPER_ROOT', graphiterootdir)
+  os.putenv('GRAPHITE_ROOT', graphiterootdir)
 
 if roi_only:
   rungraphiteoptions.append('--roi')
@@ -222,7 +275,7 @@ try:
         print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
         sys.exit(1)
 
-      tracecmd = '"%s" -o %s -e 1 -s %u -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), startthread)
+      tracecmd = '%s -o %s -e 1 -s %u -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), startthread)
       t = threading.Thread(target = program.run, args = (tracecmd,))
       threads.append(t)
       startthread += app_nthreads

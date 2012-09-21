@@ -7,6 +7,7 @@ import sys, os
 DEPENDENCIES = [
   ('g++ / gcc-g++', '/usr/bin/g++'),
   ('m4', '/usr/bin/m4'),
+  ('wget', '/usr/bin/wget'),
 ]
 
 ALTERNATIVES = [

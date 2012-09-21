@@ -3,23 +3,23 @@ HOOKS_DIR=../tools/hooks/
 
 parsec-core : parsec-2.1/.parsec_source
 parsec-2.1/.parsec_source :
-	curl http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-core.tar.gz | tar xz --keep-old-files ; true
-	curl -sS http://parsec.cs.princeton.edu/download/2.1/bugfixes/parsec-ocreat.patch | patch -p1 -dparsec-2.1
-	curl -sS http://parsec.cs.princeton.edu/download/2.1/bugfixes/ferret-deadlock.patch | patch -p1 -dparsec-2.1
-	curl -sS http://parsec.cs.princeton.edu/download/2.1/bugfixes/blackscholes.c.patch | patch -p0 -dparsec-2.1/pkgs/apps/blackscholes/src
-	curl -sS http://parsec.cs.princeton.edu/download/2.1/bugfixes/blackscholes.tbb.cpp.patch | patch -p0 -dparsec-2.1/pkgs/apps/blackscholes/src
-	curl -sS http://parsec.cs.princeton.edu/download/2.1/bugfixes/streamcluster_barrier.patch | patch -p1 -dparsec-2.1
+	wget -O - http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-core.tar.gz | tar xz --keep-old-files ; true
+	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/parsec-ocreat.patch | patch -p1 -dparsec-2.1
+	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/ferret-deadlock.patch | patch -p1 -dparsec-2.1
+	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/blackscholes.c.patch | patch -p0 -dparsec-2.1/pkgs/apps/blackscholes/src
+	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/blackscholes.tbb.cpp.patch | patch -p0 -dparsec-2.1/pkgs/apps/blackscholes/src
+	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/streamcluster_barrier.patch | patch -p1 -dparsec-2.1
 	patch -p1 -dparsec-2.1 < patches/ssl-asm.patch
 	# Once the download succeeded and we applied all patches, mark as done
 	touch parsec-2.1/.parsec_source
 
 parsec-input-sim : parsec-2.1/pkgs/apps/blackscholes/inputs/input_simsmall.tar
 parsec-2.1/pkgs/apps/blackscholes/inputs/input_simsmall.tar :
-	curl http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-sim.tar.gz | tar xz
+	wget -O - http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-sim.tar.gz | tar xz
 
 parsec-input-native : parsec-2.1/pkgs/apps/blackscholes/inputs/input_native.tar
 parsec-2.1/pkgs/apps/blackscholes/inputs/input_native.tar :
-	curl http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-native.tar.gz | tar xz
+	wget -O - http://parsec.cs.princeton.edu/download/2.1/parsec-2.1-native.tar.gz | tar xz
 
 parsec-dependencies :
 	./checkdependencies.py
