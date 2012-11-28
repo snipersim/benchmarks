@@ -21,7 +21,12 @@ def allinputs():
 
 class Program:
 
-  def __init__(self, program, nthreads, inputsize, benchmark_options = []):
+  def __init__(self, program, ncores, inputsize, benchmark_options = []):
+    if '-' in inputsize:
+      inputsize, nthreads = inputsize.rsplit('-', 1)
+      nthreads = int(nthreads)
+    else:
+      nthreads = ncores
     if program not in allbenchmarks():
       raise ValueError("Invalid benchmark %s" % program)
     if inputsize not in allinputs():
@@ -29,6 +34,7 @@ class Program:
     self.program = program
     self.nthreads = nthreads
     self.inputsize = inputsize
+    self.ncores = ncores
     splashrun['benchmarks'][self.program].validate(self.inputsize, self.nthreads)
 
 

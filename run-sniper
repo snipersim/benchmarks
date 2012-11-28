@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-import sys, os, time, getopt, subprocess, pipes, tempfile, threading
+import sys, os, time, getopt, subprocess, pipes, tempfile, threading, traceback
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'scheduler'))
 import graphite_tools
+sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'python'))
+import env_setup_bm
 
 
 abspath = lambda d: os.path.abspath(os.path.join(d))
@@ -31,18 +33,18 @@ def usage():
 program = ''
 inputsize = 'test'
 benchmark_options = []
-nthreads = 1
+nthreads = None
 machines = 'localhost'
 outputdir = '.'
 rungraphiteoptions = []
-graphiterootdir = os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT')
+graphiterootdir = env_setup_bm.sniper_root()
 roi_only = True
 roi_script = False
 saverun = False
 saverun_prefix = ''
 saverun_second_stage = False
 need_curdir = False
-trace = []
+benchmarks = []
 
 if not sys.argv[1:]:
   usage()
@@ -75,9 +77,14 @@ for o, a in opts:
   if o == '-d':
     outputdir = a
   if o == '-c':
-    if os.path.isfile(a):
-      a = os.path.abspath(os.path.join(a))
-    rungraphiteoptions.append('-c ' + pipes.quote(a))
+    cfgs = []
+    for cfg in a.split(','):
+      if os.path.isfile(cfg):
+        cfg = os.path.abspath(os.path.join(cfg))
+      elif os.path.isfile(cfg+'.cfg'):
+        cfg = os.path.abspath(os.path.join(cfg+'.cfg'))
+      cfgs.append(cfg)
+    rungraphiteoptions.append('-c ' + pipes.quote(','.join(cfgs)))
   if o == '-g':
     rungraphiteoptions.append('-g ' + pipes.quote(a))
   if o == '-r':
@@ -102,32 +109,13 @@ for o, a in opts:
     rungraphiteoptions.append(o)
   if o == '--benchmarks':
     for bm in a.split(','):
-      trace.append(bm.split('-'))
-    nthreads = 0
-    for package, programname, inputsize, app_nthreads in trace:
-      nthreads += int(app_nthreads)
+      benchmarks.append(bm.split('-'))
+    if not nthreads:
+      nthreads = sum([ int(app_nthreads) for package, programname, inputsize, app_nthreads in benchmarks ])
 
-
-if not graphiterootdir:
-  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
-  sys.exit(1)
-
-if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper'))):
-  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
-  sys.exit(1)
-
-if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
-  print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
-  sys.exit(1)
-
-if not os.getenv('BENCHMARKS_ROOT'):
-  benchmarksrootdir = os.path.realpath(os.curdir)
-  if os.path.exists(benchmarksrootdir):
-    print 'NOTICE: Using "%s" as the BENCHMARKS_ROOT directory.' % benchmarksrootdir
-    os.putenv('BENCHMARKS_ROOT', benchmarksrootdir)
-  else:
-    print '\nERROR: Unable to determine your BENCHMARKS_ROOT directory. Please set it before running a benchmark.\n'
-    sys.exit(1)
+if nthreads is None:
+  # Keep nthreads as None while scanning options, so --benchmarks can set a default overriden by -n
+  nthreads = 1
 
 if not graphiterootdir:
   print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
@@ -141,13 +129,29 @@ if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin
   print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
   sys.exit(1)
 
-if not os.getenv('BENCHMARKS_ROOT'):
-  benchmarksrootdir = os.path.realpath(os.curdir)
-  if os.path.exists(benchmarksrootdir):
-    print 'NOTICE: Using "%s" as the BENCHMARKS_ROOT directory.' % benchmarksrootdir
-    os.putenv('BENCHMARKS_ROOT', benchmarksrootdir)
-  else:
-    print '\nERROR: Unable to determine your BENCHMARKS_ROOT directory. Please set it before running a benchmark.\n'
+# This command will always succeed
+benchmarksrootdir = env_setup_bm.benchmarks_root()
+os.putenv('BENCHMARKS_ROOT', benchmarksrootdir)
+
+if not graphiterootdir:
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper'))):
+  print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
+  sys.exit(1)
+
+if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
+  print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
+  sys.exit(1)
+
+# Create the output directory if it doesn't already exist
+outputdir = os.path.realpath(outputdir)
+if not os.path.exists(outputdir):
+  try:
+    os.makedirs(outputdir)
+  except OSError:
+    print >> sys.stderr, 'Failed to create output directory', outputdir
     sys.exit(1)
 
 if saverun_second_stage:
@@ -198,9 +202,11 @@ if graphiterootdir == (os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT')):
     print '   using SNIPER_ROOT/GRAPHITE_ROOT =', (os.getenv('SNIPER_ROOT') or os.getenv('GRAPHITE_ROOT'))
     print ''
     time.sleep(5)
-else:
-  os.putenv('SNIPER_ROOT', graphiterootdir)
-  os.putenv('GRAPHITE_ROOT', graphiterootdir)
+
+# Explicitly set both SNIPER_ROOT and GRAPHITE_ROOT to the selected directory to avoid
+# confusion in scripts that use either one or the other
+os.putenv('SNIPER_ROOT', graphiterootdir)
+os.putenv('GRAPHITE_ROOT', graphiterootdir)
 
 if roi_only:
   rungraphiteoptions.append('--roi')
@@ -211,32 +217,30 @@ if need_curdir:
   # Pass current directory to Graphite, which can use it to find more script files
   rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
 
-if not program and not trace:
+if not program and not benchmarks:
   usage()
 
-if trace:
+if benchmarks:
   rungraphiteoptions.append('--trace-manual')
-  rungraphiteoptions.append('-g --traceinput/emulate_syscalls=true')
   rungraphiteoptions.append('-g --traceinput/enabled=true')
-  if max(map(lambda x:x[3], trace)) != 1:
+  rungraphiteoptions.append('-g --traceinput/emulate_syscalls=true')
+  if max(map(lambda x:x[3], benchmarks)) != 1:
     rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=false')
   else:
     rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=true')
   rungraphiteoptions.append('-g --traceinput/threads_to_start=1')
-  threads_per_core = map(lambda x:x[3], trace)
-  rungraphiteoptions.append('-g --traceinput/num_threads=%s' % (','.join(threads_per_core)))
-  rungraphiteoptions.append('-g --traceinput/num_apps=%u' % len(trace))
-  traces = {'': [], '_response': []}
+  rungraphiteoptions.append('-g --traceinput/num_apps=%u' % len(benchmarks))
   basefname = 'run_benchmarks'
   tracetempdir = tempfile.mkdtemp()
-  for t in range(nthreads):
+  tracefiles_created = [] # FIFOs to be cleaned up
+  traceprefix = os.path.join(tracetempdir, basefname)
+  rungraphiteoptions.append('-g --traceinput/trace_prefix=%s' % traceprefix)
+  # Create FIFOs for first thread of each application
+  for p in range(len(benchmarks)):
     for f in ('','_response'):
-      filename = os.path.join(tracetempdir, '%s%s.th%d.sift' % (basefname, f, t))
-      traces[f].append(filename)
+      filename = '%s%s.app%d.th%d.sift' % (traceprefix, f, p, 0)
       os.mkfifo(filename)
-  for f, opt in (('','traces'),('_response','response-traces')):
-    for i, t in enumerate(traces[f]):
-      rungraphiteoptions.append('-g --traceinput/thread%s_%u=%s' % (f, i, t))
+      tracefiles_created.append(filename)
 
 outputdir = abspath(outputdir)
 os.chdir(outputdir)
@@ -248,7 +252,7 @@ runcmd = abspath(os.path.join(graphiterootdir, 'run-sniper'))
 
 try:
   rc=1
-  if not trace:
+  if not benchmarks:
     package, program = program.rsplit("-",1)
     program = __import__(package).Program(program, nthreads, inputsize, benchmark_options)
 
@@ -262,34 +266,27 @@ try:
     graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
     graphitecmd += ' ' + ' '.join(rungraphiteoptions)
 
-    out = open(os.path.join(outputdir,'tracerecorder.out'), 'w')
-    err = open(os.path.join(outputdir,'tracerecorder.err'), 'w')
-    p_graphite = subprocess.Popen([ 'bash', '-c', graphitecmd ], bufsize = 1, stdout = out, stderr = err)
+    p_graphite = subprocess.Popen([ 'bash', '-c', graphitecmd ])
 
-    startthread = 0
     threads = []
-    for package, programname, inputsize, app_nthreads in trace:
-      app_nthreads = int(app_nthreads)
-      program = __import__(package).Program(programname, app_nthreads, inputsize)
+    for app_id, (package, programname, inputsize, app_nthreads) in enumerate(benchmarks):
+      program = __import__(package).Program(programname, int(app_nthreads), inputsize)
       if program.rungraphiteoptions():
         print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
         sys.exit(1)
 
-      tracecmd = '%s -o %s -e 1 -s %u -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), startthread)
+      tracecmd = '%s -o %s -e 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
       t = threading.Thread(target = program.run, args = (tracecmd,))
       threads.append(t)
-      startthread += app_nthreads
 
     for t in threads:
       t.start()
     for t in threads:
       t.join()
     p_graphite.wait()
-    out.close(); err.close()
     # Cleanup the pipes and temporary directory
-    for _f in ('','_response'):
-      for f in traces[_f]:
-        os.unlink(f)
+    for f in tracefiles_created:
+      os.unlink(f)
     os.rmdir(tracetempdir)
   sys.exit(rc)
 except KeyboardInterrupt, e:
@@ -298,5 +295,6 @@ except KeyboardInterrupt, e:
   sys.exit(-1)
 except Exception, e:
   print e
+  traceback.print_exc(file=sys.stdout)
   graphite_tools.kill_children()
   sys.exit(-1)

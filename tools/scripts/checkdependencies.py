@@ -15,7 +15,7 @@ ALTERNATIVES = [
   ('/usr/lib', '/usr/lib64'),
 ]
 
-missing = False
+missing = []
 
 def find_file(filename):
   if os.path.exists(filename):
@@ -27,11 +27,11 @@ def find_file(filename):
 
 for package, filename in DEPENDENCIES:
   if not find_file(filename):
-    print '*** Please install package %s' % package
-    missing = True
-
+    missing.append(package)
 
 if missing:
+  print >> sys.stderr, '*** Please install the following package%s: %s' % \
+                       (len(missing)>1 and 's' or '', ' '.join(missing))
   sys.exit(1)
 else:
   sys.exit(0)

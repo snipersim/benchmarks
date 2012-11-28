@@ -28,7 +28,7 @@ class Program:
       raise ValueError("Unknown program %s" % program)
 
 
-  def __init__(self, program, nthreads, inputsize):
+  def __init__(self, program, nthreads, inputsize, benchmark_options = []):
     if program not in allbenchmarks():
       raise ValueError("Invalid benchmark %s" % program)
     if inputsize not in allinputs():

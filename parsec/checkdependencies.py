@@ -27,6 +27,7 @@ DEPENDENCIES = [
   ('/usr/lib/libXt.so',       {'debian':'libxt-dev',    'redhat':'libXt-devel'}),
   ('/usr/lib/libXmu.so',      {'debian':'libxmu-dev',   'redhat':'libXmu-devel'}),
   ('/usr/lib/libXi.so',       {'debian':'libxi-dev',    'redhat':'libXi-devel'}),
+  ('/usr/bin/patch',          {'debian':'patch',        'redhat':'patch'}),
 ]
 if static:
   DEPENDENCIES += [
@@ -35,7 +36,7 @@ if static:
   ]
 
 
-missing = False
+missing = []
 
 for filename, package in DEPENDENCIES:
   if not os.path.exists(filename) and \
@@ -43,13 +44,13 @@ for filename, package in DEPENDENCIES:
      not os.path.exists(filename.replace('/usr/lib', '/usr/lib/x86_64-linux-gnu')) \
   :
     if ostype:
-      print '*** Please install package %s' % package[ostype]
+      missing.append(package[ostype])
     else:
       print '*** Cannot find the file %s' % filename
-    missing = True
-
 
 if missing:
+  print >> sys.stderr, '*** Please install the following package%s: %s' % \
+                       (len(missing)>1 and 's' or '', ' '.join(missing))
   sys.exit(1)
 else:
   sys.exit(0)
