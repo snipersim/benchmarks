@@ -29,7 +29,7 @@ DESTDIR=/usr/local
 #AR=	$(AR)
 NULL=
 
-IPATH=	-I. -I/usr/include/bsd
+IPATH=	-I.
 #
 # Library-wide configuration defines:
 #    MMAP_SUPPORT	add support for memory mapping read-only files

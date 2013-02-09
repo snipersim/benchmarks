@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 
-import sys, os, time, getopt, subprocess, pipes, tempfile, threading, traceback
+import sys, os, time, getopt, pipes, tempfile, traceback
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'scheduler'))
 import graphite_tools
 sys.path.append(os.path.join(os.path.dirname(__file__), 'tools', 'python'))
 import env_setup_bm
+sys.path.append(os.path.join(env_setup_bm.sniper_root(), 'tools'))
+import run_sniper
 
 
 abspath = lambda d: os.path.abspath(os.path.join(d))
@@ -18,7 +20,7 @@ from suites import modules
 def usage():
   print 'Run benchmark under the Sniper simulator'
   print 'Usage:'
-  print '  %s  -p <program>  -i <inputsize (test)> -n <nthreads (1)>  -m <machines (1)>  -d <outputdir (.)>  -c <config-file>  -r <sniper-root-dir>  -g <options>' % sys.argv[0]
+  print '  %s  -p <program>  -i <inputsize (test)> -n <ncores (1)>  -m <machines (1)>  -d <outputdir (.)>  -c <config-file>  -r <sniper-root-dir>  -g <options>' % sys.argv[0]
   print 'Benchmarks:'
   for module in modules:
     module = __import__(module)
@@ -33,13 +35,14 @@ def usage():
 program = ''
 inputsize = 'test'
 benchmark_options = []
-nthreads = None
+ncores = None
 machines = 'localhost'
 outputdir = '.'
 rungraphiteoptions = []
 graphiterootdir = env_setup_bm.sniper_root()
 roi_only = True
 roi_script = False
+sim_end = None
 saverun = False
 saverun_prefix = ''
 saverun_second_stage = False
@@ -49,10 +52,10 @@ benchmarks = []
 if not sys.argv[1:]:
   usage()
 
-opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats' ]
+opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats', 'viz' ]
 
 try:
-  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
+  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "sim-end=", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
 except getopt.GetoptError, e:
   # print help information and exit:
   print e
@@ -68,7 +71,7 @@ for o, a in opts:
   if o == '-B':
     benchmark_options.append(a)
   if o == '-n':
-    nthreads = int(a)
+    ncores = int(a)
   if o == '-m':
     machines = a
   if o == '-s':
@@ -98,6 +101,9 @@ for o, a in opts:
     # --roi is the default so it isn't really needed, but if we remove it from getopt's list,
     # it will interpret --roi as a prefix for --roi-script which will be completely wrong
     roi_only = True
+  if o == '--sim-end':
+    sim_end = a
+    rungraphiteoptions.append('--sim-end=%s' % sim_end)
   if o == '--save-run':
     saverun = True
   if o == '--save-run-prefix':
@@ -107,15 +113,17 @@ for o, a in opts:
     saverun_second_stage = a
   if o.startswith('--') and o[2:] in opts_passthrough:
     rungraphiteoptions.append(o)
+  if o.startswith('--') and o[2:]+'=' in opts_passthrough:
+    rungraphiteoptions.append('%s="%s"' % (o, a))
   if o == '--benchmarks':
     for bm in a.split(','):
       benchmarks.append(bm.split('-'))
-    if not nthreads:
-      nthreads = sum([ int(app_nthreads) for package, programname, inputsize, app_nthreads in benchmarks ])
+    if not ncores:
+      ncores = sum([ int(app_nthreads) for package, programname, inputsize, app_nthreads in benchmarks ])
 
-if nthreads is None:
-  # Keep nthreads as None while scanning options, so --benchmarks can set a default overriden by -n
-  nthreads = 1
+if ncores is None:
+  # Keep ncores as None while scanning options, so --benchmarks can set a default overriden by -n
+  ncores = 1
 
 if not graphiterootdir:
   print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has not been set. Please set it to continue.\n'
@@ -159,7 +167,7 @@ if saverun_second_stage:
 
 elif saverun:
   # Create the base directory
-  runpathbase = os.path.join(os.getenv('BENCHMARKS_ROOT'),'runs','%s-%s-%s'%(program,inputsize,nthreads))
+  runpathbase = os.path.join(os.getenv('BENCHMARKS_ROOT'),'runs','%s-%s-%s'%(program,inputsize,ncores))
   os.system('mkdir -p "%s"' % abspath(runpathbase))
   # Find the next available run directory
   runnum = 1
@@ -209,7 +217,11 @@ os.putenv('SNIPER_ROOT', graphiterootdir)
 os.putenv('GRAPHITE_ROOT', graphiterootdir)
 
 if roi_only:
-  rungraphiteoptions.append('--roi')
+  if benchmarks:
+    pass # record-trace will only send ROI instructions through SIFT,
+         # Sniper itself must process all of them in detailed mode
+  else:
+    rungraphiteoptions.append('--roi')
 if roi_script:
   rungraphiteoptions.append('--roi-script')
 
@@ -224,11 +236,6 @@ if benchmarks:
   rungraphiteoptions.append('--trace-manual')
   rungraphiteoptions.append('-g --traceinput/enabled=true')
   rungraphiteoptions.append('-g --traceinput/emulate_syscalls=true')
-  if max(map(lambda x:x[3], benchmarks)) != 1:
-    rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=false')
-  else:
-    rungraphiteoptions.append('-g --traceinput/stop_with_first_thread=true')
-  rungraphiteoptions.append('-g --traceinput/threads_to_start=1')
   rungraphiteoptions.append('-g --traceinput/num_apps=%u' % len(benchmarks))
   basefname = 'run_benchmarks'
   tracetempdir = tempfile.mkdtemp()
@@ -254,36 +261,35 @@ try:
   rc=1
   if not benchmarks:
     package, program = program.rsplit("-",1)
+    if '-' in inputsize:
+      inputsize, nthreads = inputsize.rsplit('-', 1)
+      nthreads = int(nthreads)
+      benchmark_options.append('force_nthreads')
+    else:
+      nthreads = ncores
     program = __import__(package).Program(program, nthreads, inputsize, benchmark_options)
 
-    graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
-    graphitecmd += ' ' + ' '.join(rungraphiteoptions)
-    graphitecmd += ' ' + program.rungraphiteoptions()
-    graphitecmd += ' -- '
+    snipercmd = "%(runcmd)s -n %(ncores)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+    snipercmd += ' ' + ' '.join(rungraphiteoptions)
+    snipercmd += ' ' + program.rungraphiteoptions()
+    snipercmd += ' -- '
 
-    rc = program.run(graphitecmd)
+    rc = program.run(snipercmd)
   else:
-    graphitecmd = "%(runcmd)s -n %(nthreads)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
-    graphitecmd += ' ' + ' '.join(rungraphiteoptions)
-
-    p_graphite = subprocess.Popen([ 'bash', '-c', graphitecmd ])
-
-    threads = []
+    snipercmd = "%(runcmd)s -n %(ncores)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+    snipercmd += ' ' + ' '.join(rungraphiteoptions)
+    
+    applications = []
     for app_id, (package, programname, inputsize, app_nthreads) in enumerate(benchmarks):
-      program = __import__(package).Program(programname, int(app_nthreads), inputsize)
+      program = __import__(package).Program(programname, int(app_nthreads), inputsize, ['force_nthreads'])
       if program.rungraphiteoptions():
         print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
         sys.exit(1)
+      tracecmd = '%s -o %s -e 1 -r 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
+      applications.append({'app_id': app_id, 'func': program.run, 'args': tracecmd })
 
-      tracecmd = '%s -o %s -e 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
-      t = threading.Thread(target = program.run, args = (tracecmd,))
-      threads.append(t)
+    rc = run_sniper.run_multi(snipercmd, applications, repeat = (sim_end or 'first').endswith('-restart'), outputdir = outputdir)
 
-    for t in threads:
-      t.start()
-    for t in threads:
-      t.join()
-    p_graphite.wait()
     # Cleanup the pipes and temporary directory
     for f in tracefiles_created:
       os.unlink(f)

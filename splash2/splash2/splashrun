@@ -104,7 +104,7 @@ benchmarks = {
   'fft':        BenchmarkPlain('fft', 'kernels/fft', 'FFT', { 'test': 10, 'tiny': 14, 'small': 18, 'large': 22 }, '-m%(input)u -p%(nthreads)u'),
   'lu.cont':    BenchmarkPlain('lu.cont', 'kernels/lu/contiguous_blocks', 'LU', { 'test': 16, 'small': 512, 'large': 1024 }, '-n%(input)u -p%(nthreads)u'),
   'lu.ncont':   BenchmarkPlain('lu.ncont', 'kernels/lu/non_contiguous_blocks', 'LU', { 'test': 16, 'small': 512, 'large': 1024 }, '-n%(input)u -p%(nthreads)u'),
-  'radix':      BenchmarkPlain('radix', 'kernels/radix', 'RADIX', { 'test': 16384, 'small': 262144, 'large': 1048576 }, '-n%(input)u -p%(nthreads)u'),
+  'radix':      BenchmarkPlain('radix', 'kernels/radix', 'RADIX', { 'test': 16384, 'tiny': 65536, 'small': 262144, 'large': 1048576 }, '-n%(input)u -p%(nthreads)u'),
 
   # scale versions
   'barnes-scale':     BenchmarkStdin('barnes', 'apps/barnes', 'BARNES', { 'small': lambda p: 16384*p/16 }, '\n%(input)u\n123\n\n0.025\n0.05\n1.0\n2.0\n5.0\n0.075\n0.25\n%(nthreads)u\n'),
