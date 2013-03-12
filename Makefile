@@ -12,12 +12,14 @@ all: dependencies
 	make -C tools/hooks
 	make -C splash2
 	make -C parsec
+	make -C cpu2006
 	make -C local
 
 clean:
 	make -C tools/hooks clean
 	make -C splash2 clean
 	make -C parsec clean
+	make -C cpu2006 clean
 	make -C local clean
 
 dependencies:

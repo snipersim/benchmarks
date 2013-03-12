@@ -1,1 +1,1 @@
-modules = ('splash2', 'parsec', 'local')
+modules = ('splash2', 'parsec', 'cpu2006', 'local')
