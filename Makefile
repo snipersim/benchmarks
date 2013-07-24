@@ -13,6 +13,7 @@ all: dependencies
 	make -C splash2
 	make -C parsec
 	make -C cpu2006
+	make -C npb
 	make -C local
 
 clean:
@@ -20,6 +21,7 @@ clean:
 	make -C splash2 clean
 	make -C parsec clean
 	make -C cpu2006 clean
+	make -C npb clean
 	make -C local clean
 
 dependencies:

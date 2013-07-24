@@ -7,6 +7,7 @@ flags = [
   ('HOOKS_DIR', '${BENCHMARKS_ROOT}/tools/hooks'),
   ('HOOKS_CC', 'gcc'),
   ('HOOKS_CXX', 'g++'),
+  ('HOOKS_FC', 'f95'),
   ('LD', 'g++'),
   ('HOOKS_CFLAGS', '-I${HOOKS_DIR} -I${GRAPHITE_ROOT}/include'),
   ('HOOKS_CXXFLAGS', '${HOOKS_CFLAGS}'),

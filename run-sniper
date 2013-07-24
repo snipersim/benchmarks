@@ -22,11 +22,11 @@ def usage():
   print 'Usage:'
   print '  %s  -p <program>  -i <inputsize (test)> -n <ncores (1)>  -m <machines (1)>  -d <outputdir (.)>  -c <config-file>  -r <sniper-root-dir>  -g <options>' % sys.argv[0]
   print 'Benchmarks:'
-  for module in modules:
+  for module in sorted(modules):
     module = __import__(module)
     print ' ', module.__name__ + ':'
     try:
-      print '   ', ' '.join('%s-%s' % (module.__name__, bm) for bm in module.allbenchmarks())
+      print '   ', ' '.join(module.allbenchmarks())
     except TypeError:
       print 'INFO: %s not downloaded yet, run make to download its components.' % module.__name__
 
@@ -46,16 +46,16 @@ sim_end = None
 saverun = False
 saverun_prefix = ''
 saverun_second_stage = False
-need_curdir = False
 benchmarks = []
+verbose = False
 
 if not sys.argv[1:]:
   usage()
 
-opts_passthrough = [ 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats', 'viz' ]
+opts_passthrough = [ 'profile', 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats', 'viz', 'viz-aso' ]
 
 try:
-  opts, args = getopt.getopt(sys.argv[1:], "hp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "sim-end=", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
+  opts, args = getopt.getopt(sys.argv[1:], "hvp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "sim-end=", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
 except getopt.GetoptError, e:
   # print help information and exit:
   print e
@@ -64,6 +64,9 @@ for o, a in opts:
   if o == '-h':
     usage()
     sys.exit()
+  if o == '-v':
+    verbose = True
+    rungraphiteoptions.append('-v')
   if o == '-p':
     program = a
   if o == '-i':
@@ -76,7 +79,6 @@ for o, a in opts:
     machines = a
   if o == '-s':
     rungraphiteoptions.append('-s ' + pipes.quote(a))
-    need_curdir = True
   if o == '-d':
     outputdir = a
   if o == '-c':
@@ -225,9 +227,9 @@ if roi_only:
 if roi_script:
   rungraphiteoptions.append('--roi-script')
 
-if need_curdir:
-  # Pass current directory to Graphite, which can use it to find more script files
-  rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
+# Pass current directory to Sniper, which can use it to find more script files
+# (By the time sniper/run-sniper gets called, the benchmark's runner script most likely has already changed the current directory)
+rungraphiteoptions.append('--curdir=' + pipes.quote(os.getcwd()))
 
 if not program and not benchmarks:
   usage()
@@ -285,15 +287,21 @@ try:
       if program.rungraphiteoptions():
         print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
         sys.exit(1)
-      tracecmd = '%s -o %s -e 1 -r 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
+      tracecmd = '%s --routine-tracing -o %s -e 1 -r 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
       applications.append({'app_id': app_id, 'func': program.run, 'args': tracecmd })
 
     rc = run_sniper.run_multi(snipercmd, applications, repeat = (sim_end or 'first').endswith('-restart'), outputdir = outputdir)
 
     # Cleanup the pipes and temporary directory
     for f in tracefiles_created:
-      os.unlink(f)
-    os.rmdir(tracetempdir)
+      try:
+        os.unlink(f)
+      except OSError:
+        pass
+    try:
+      os.rmdir(tracetempdir)
+    except OSError:
+      pass
   sys.exit(rc)
 except KeyboardInterrupt, e:
   print >> sys.stderr, '\nCtrl-C detected: Killing all child processes'

@@ -11,7 +11,7 @@ MACROS = ${SPLASH_ROOT}/pthreads/c.m4.null.POSIX
 
 all:
 	$(MAKE) -C ${HOOKS_DIR}
-	for DIR in `find apps kernels -name \[Mm\]akefile|sed -e 's+/[Mm]akefile++'|sort -r`; do CC="$(CC)" AR="$(AR)" LD="$(LD)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" MACROS="$(MACROS)" $(MAKE) -C $$DIR all; if [ $$? -eq 0 ]; then echo; else exit -1; fi; done
+	for DIR in `find apps kernels -name \[Mm\]akefile|sed -e 's+/[Mm]akefile++'|sort -r`; do CC="$(CC)" AR="$(AR)" LD="$(LD)" CFLAGS="$(CFLAGS)" LDFLAGS="$(LDFLAGS)" MACROS="$(MACROS)" TARGET_ARCH="" $(MAKE) -C $$DIR all; if [ $$? -eq 0 ]; then echo; else exit -1; fi; done
 
 clean:
 	$(MAKE) -C ${HOOKS_DIR} clean
