@@ -52,7 +52,7 @@ verbose = False
 if not sys.argv[1:]:
   usage()
 
-opts_passthrough = [ 'profile', 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats', 'viz', 'viz-aso' ]
+opts_passthrough = [ 'profile', 'perf', 'gdb', 'gdb-wait', 'gdb-quit', 'appdebug', 'appdebug-manual', 'appdebug-enable', 'power', 'cache-only', 'fast-forward', 'no-cache-warming', 'save-patch', 'pin-stats', 'viz', 'viz-aso', 'wrap-sim=', 'sift' ]
 
 try:
   opts, args = getopt.getopt(sys.argv[1:], "hvp:i:B:n:m:s:d:c:r:g:", [ "no-roi", "roi-script", "roi", "sim-end=", "save-run", "save-run-prefix=", "save-run-second-stage=", "benchmarks=" ] + opts_passthrough)
@@ -271,7 +271,8 @@ try:
       nthreads = ncores
     program = __import__(package).Program(program, nthreads, inputsize, benchmark_options)
 
-    snipercmd = "%(runcmd)s -n %(ncores)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
+    snipercmd =  'SNIPER_APP_LD_PRELOAD=$LD_PRELOAD; unset LD_PRELOAD; ' # Allow benchmarks that require LD_PRELOAD to work inside of Sniper
+    snipercmd += "%(runcmd)s -n %(ncores)u -m '%(machines)s' -d '%(outputdir)s'" % locals()
     snipercmd += ' ' + ' '.join(rungraphiteoptions)
     snipercmd += ' ' + program.rungraphiteoptions()
     snipercmd += ' -- '
@@ -287,7 +288,7 @@ try:
       if program.rungraphiteoptions():
         print 'Program', programname, 'requires simulator options to run.  This is currently unsupported.'
         sys.exit(1)
-      tracecmd = '%s --routine-tracing -o %s -e 1 -r 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
+      tracecmd = '%s %s --routine-tracing -o %s -e 1 -r 1 -s %u %s -- ' % (os.path.join(graphiterootdir, 'record-trace'), verbose and '-v' or '', os.path.join(tracetempdir,basefname), app_id, roi_only and '--roi' or '')
       applications.append({'app_id': app_id, 'func': program.run, 'args': tracecmd })
 
     rc = run_sniper.run_multi(snipercmd, applications, repeat = (sim_end or 'first').endswith('-restart'), outputdir = outputdir)

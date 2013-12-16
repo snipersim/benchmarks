@@ -30,6 +30,9 @@ inputmap = {
   'A': 'A',
   'B': 'B',
   'C': 'C',
+  'Ar': 'A',
+  'Br': 'B',
+  'Cr': 'C',
   'D': 'D',
   'E': 'E',
 }
@@ -61,6 +64,13 @@ iterations = {
   'ua': {'A': 200, 'B': 200, 'C': 200},
 }
 
+# Reduced iteration counts (warmup-start, roi-start, roi-end)
+inputs_reduced = {
+  'Ar': { 'bt': (1, 20, 39),                                                  'lu': (1, 3, 4),                  'sp': (1, 20, 39), 'ua': (1, 5, 35) },
+  'Br': { 'bt': (1, 3, 4), 'cg': (1, 3, 4), 'ft': (1, 2, 2),                  'lu': (1, 2, 2), 'mg': (1, 3, 4), 'sp': (1, 3, 4),   'ua': (1, 5, 25) },
+  'Cr': { 'bt': (1, 2, 2), 'cg': (1, 2, 2), 'ft': (1, 2, 2), 'is': (1, 3, 4), 'lu': (1, 2, 2), 'mg': (1, 2, 2), 'sp': (1, 2, 2),   'ua': (1, 2, 2) },
+}
+
 def allbenchmarks():
   return tuple(apps)
 
@@ -78,6 +88,7 @@ class Program:
     self.nthreads = int(nthreads)
     self.nthreads_force = 'force_nthreads' in benchmark_options
     self.inputsize = inputmap[inputsize]
+    self.reduced = inputs_reduced.get(inputsize, {}).get(program, (None, None, None))
     self.cleanup = None
     if program == 'dc':
       self.cleanup = 'rm ADC.*'
@@ -99,8 +110,17 @@ class Program:
 
   def run(self, graphitecmd, postcmd = ''):
     if not os.path.exists(self.pgm_path()):
-      raise ValueError("Input size %s not compiled" % inputsize)
-    rc = run_bm(self.program, self.pgm_path(), graphitecmd, env = 'ulimit -s 1048576; export OMP_NUM_THREADS=%d; export OMP_THREAD_LIMIT=%d; export OMP_WAIT_POLICY=passive;' % (self.get_nthreads(), self.get_nthreads()), postcmd = postcmd)
+      raise ValueError("Input size %s not compiled" % self.inputsize)
+    env = [
+      'ulimit -s 1048576',
+      'export OMP_NUM_THREADS=%d' % self.get_nthreads(),
+      'export OMP_THREAD_LIMIT=%d' % self.get_nthreads(),
+      'export OMP_WAIT_POLICY=passive',
+    ]
+    for k, v in zip(('PARMACS_ITER_WARMUP', 'PARMACS_ITER_ROIBEGIN', 'PARMACS_ITER_ROIEND'), self.reduced):
+      if v is not None:
+        env.append('export %s=%d' % (k, v))
+    rc = run_bm(self.program, self.pgm_path(), graphitecmd, env = '; '.join(env) + '; LD_PRELOAD=%s' % os.path.join(HOME, '..', 'tools', 'hooks', 'libhooks_base_pre.so'), postcmd = postcmd)
     if self.cleanup:
       os.system(self.cleanup)
     return rc
