@@ -41,7 +41,8 @@ missing = []
 for filename, package in DEPENDENCIES:
   if not os.path.exists(filename) and \
      not os.path.exists(filename.replace('/usr/lib', '/usr/lib64')) and \
-     not os.path.exists(filename.replace('/usr/lib', '/usr/lib/x86_64-linux-gnu')) \
+     not os.path.exists(filename.replace('/usr/lib', '/usr/lib/x86_64-linux-gnu')) and \
+     not os.path.exists(filename.replace('/usr/lib', '/usr/lib/i386-linux-gnu')) \
   :
     if ostype:
       missing.append(package[ostype])
