@@ -11,7 +11,7 @@ parsec-2.1/.parsec_source :
 	wget -O - -q http://parsec.cs.princeton.edu/download/2.1/bugfixes/streamcluster_barrier.patch | patch -p1 -dparsec-2.1
 	patch -p1 -dparsec-2.1 < patches/ssl-asm.patch
 	patch -p1 -dparsec-2.1 < patches/raytrace-unistd-gcc-fix.patch
-	patch -p1 -dparsec-2.1 < patches/raytrace-Xext-fix.patch
+	patch -p3 -dparsec-2.1 < patches/raytrace-Xext-fix.patch
 	# Once the download succeeded and we applied all patches, mark as done
 	touch parsec-2.1/.parsec_source
 
