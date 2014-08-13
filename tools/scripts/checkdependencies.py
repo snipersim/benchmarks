@@ -6,6 +6,7 @@ import sys, os
 
 DEPENDENCIES = [
   ('g++ / gcc-g++', '/usr/bin/g++'),
+  ('gfortran', '/usr/bin/f95'),
   ('m4', '/usr/bin/m4'),
   ('wget', '/usr/bin/wget'),
 ]
