@@ -6,7 +6,7 @@ import sys, os
 
 DEPENDENCIES = [
   ('g++ / gcc-g++', '/usr/bin/g++'),
-  ('gfortran', '/usr/bin/f95'),
+  ('gfortran', '/usr/bin/gfortran'),
   ('m4', '/usr/bin/m4'),
   ('wget', '/usr/bin/wget'),
 ]
@@ -14,6 +14,7 @@ DEPENDENCIES = [
 ALTERNATIVES = [
   ('/usr/lib', '/usr/lib/x86_64-linux-gnu'),
   ('/usr/lib', '/usr/lib64'),
+  ('/usr/bin', '/opt/rh/devtoolset-2/root/usr/bin'),
 ]
 
 missing = []
