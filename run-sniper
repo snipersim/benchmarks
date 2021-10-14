@@ -135,9 +135,9 @@ if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper
   print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
   sys.exit(1)
 
-if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
-  print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
-  sys.exit(1)
+print os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so')), os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))), os.path.realpath(os.path.join(graphiterootdir, 'lib', 'sniper')), os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'sniper')))
+
+print ( (not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so')))) and (not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'sniper')))) )
 
 # This command will always succeed
 benchmarksrootdir = env_setup_bm.benchmarks_root()
@@ -151,7 +151,14 @@ if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'run-sniper
   print '\nERROR: The SNIPER_ROOT or GRAPHITE_ROOT environment variable has been set to the wrong directory. Please set it to a directory containing Sniper to continue.\n'
   sys.exit(1)
 
-if not os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', 'pin_sim.so'))):
+# Has Sniper been compiled
+bins = ['pin_sim.so', 'sniper']
+found = False
+for b in bins:
+  if os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', b))):
+    print 'found', b
+    found = True
+if not found:
   print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
   sys.exit(1)
 
