@@ -82,9 +82,12 @@ RUN cd /tmp && \
 ENV PATH /usr/local/bin/:$PATH
 # Setup the user in your environment
 ARG USER
+ARG GROUP
 ARG UID
 ARG GID
-RUN useradd --create-home -s /bin/bash --uid $UID --gid $GID $USER
+# Add a new group just in case it is needed
+RUN groupadd --gid $GID --non-unique "${GROUP}-docker"
+RUN useradd --create-home -s /bin/bash --uid $UID --gid "${GROUP}-docker" $USER
 # Enable gcc-4.8 as the default
 ENV PATH /opt/rh/devtoolset-2/root/usr/bin/:$PATH
 # Enable gcc-7 as the default
