@@ -43,9 +43,9 @@ class Program:
     return self.nthreads
 
 
-  def run(self, submit):
+  def run(self, submit, postcmd = ''):
     print '[LOCAL]', '[========== Running benchmark', self.program, '==========]'
-    cmd = submit + ' ' + self.cmd
+    cmd = submit + ' ' + self.cmd + ' ' + postcmd
     print '[LOCAL]', 'Running \'' + cmd + '\':'
     print '[LOCAL]', '[---------- Beginning of output ----------]'
     sys.stdout.flush()
