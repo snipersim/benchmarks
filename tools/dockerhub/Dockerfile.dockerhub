@@ -6,14 +6,14 @@ RUN sed -i '/^mirrorlist/s/^/#/;/^#baseurl/{s/#//;s/mirror.centos.org\/centos\/$
 RUN yum update -y && \
     yum install -y \
       centos-release-scl \
-      wget \ 
+      wget \
     && \
     wget --no-check-certificate http://people.centos.org/tru/devtools-2/devtools-2.repo -O /etc/yum.repos.d/devtools-2.repo && \
     yum clean all && \
     rm -rf /tmp/* /var/tmp/*
 # Fix SCL repos, from https://stackoverflow.com/a/29559374
 RUN sed -i '/^mirrorlist/s/^/#/;/^#baseurl/{s/#//;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL*
-RUN sed -i '/^mirrorlist/s/^/#/;/^# baseurl/{s/# //;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL* 
+RUN sed -i '/^mirrorlist/s/^/#/;/^# baseurl/{s/# //;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL*
 # Install dependencies for LLVM, Sniper and Benchmarks, matplotlib, gcc-4.8 / devtoolset-2, gcc-7 / devtoolset-7
 RUN yum update -y && \
     yum install -y \
@@ -89,10 +89,9 @@ ENV PATH /opt/rh/devtoolset-2/root/usr/bin/:$PATH
 # Enable gcc-7 as the default
 #ENV PATH /opt/rh/devtoolset-7/root/usr/bin/:$PATH
 # Download the Benchmarks
-COPY benchmarks-root-with-docker.patch /home/user/.
 RUN mkdir -p sniper
 COPY sniper sniper/
-RUN cd /home/user && git clone http://snipersim.com/git/benchmarks.git && cd benchmarks && patch -p1 < /home/user/benchmarks-root-with-docker.patch && make
+RUN cd /home/user && git clone http://snipersim.org/git/benchmarks.git && cd benchmarks && git checkout -q 06d3a79ccc3deea71d382e6038ecbe3a39e54156 && make
 
 FROM centos:6 AS runner
 # Fix main repos, from https://stackoverflow.com/a/29559374
@@ -106,7 +105,7 @@ RUN yum update -y && \
     rm -rf /tmp/* /var/tmp/*
 # Fix SCL repos, from https://stackoverflow.com/a/29559374
 RUN sed -i '/^mirrorlist/s/^/#/;/^#baseurl/{s/#//;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL*
-RUN sed -i '/^mirrorlist/s/^/#/;/^# baseurl/{s/# //;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL* 
+RUN sed -i '/^mirrorlist/s/^/#/;/^# baseurl/{s/# //;s/mirror.centos.org\/centos\/6/vault.centos.org\/6.10/}' /etc/yum.repos.d/*SCL*
 # Install main repos needed for running the applications, not for compilation
 RUN yum update -y && \
     yum install -y \
@@ -147,9 +146,8 @@ RUN mkdir -p /usr/local
 ENV PATH /usr/local/bin/:$PATH
 # Copy the compiled binaries from the previous docker image
 COPY --from=builder /usr/local /usr/local/
-COPY benchmarks-root-with-docker.patch /root/
 # Set up a copy of the benchmarks root
-RUN git clone http://snipersim.com/git/benchmarks.git && cd benchmarks && patch -p1 < /root/benchmarks-root-with-docker.patch
+RUN git clone http://snipersim.org/git/benchmarks.git && cd benchmarks && git checkout -q 06d3a79ccc3deea71d382e6038ecbe3a39e54156
 RUN make -C ./benchmarks/tools/hooks buildscripts
 # Copy benchmarks from the previous docker image
 COPY --from=builder /home/user/benchmarks/local/pi/pi benchmarks/local/pi/pi
