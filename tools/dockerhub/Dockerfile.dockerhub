@@ -232,8 +232,3 @@ COPY --from=builder /home/user/benchmarks/splash2/splash2/codes/kernels/fft/FFT-
 COPY --from=builder /home/user/benchmarks/splash2/splash2/codes/kernels/lu/contiguous_blocks/LU benchmarks/splash2/splash2/codes/kernels/lu/contiguous_blocks/LU
 COPY --from=builder /home/user/benchmarks/splash2/splash2/codes/kernels/lu/non_contiguous_blocks/LU benchmarks/splash2/splash2/codes/kernels/lu/non_contiguous_blocks/LU
 COPY --from=builder /home/user/benchmarks/splash2/splash2/codes/kernels/radix/RADIX benchmarks/splash2/splash2/codes/kernels/radix/RADIX
-
-FROM runner AS localrunner
-# Install your Sniper version
-ARG SNIPER_GIT_REPO
-RUN git clone $SNIPER_GIT_REPO sniper && make -C sniper
