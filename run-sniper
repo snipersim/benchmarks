@@ -152,7 +152,6 @@ bins = ['pin_sim.so', 'sniper']
 found = False
 for b in bins:
   if os.path.exists(os.path.realpath(os.path.join(graphiterootdir, 'lib', b))):
-    print 'found', b
     found = True
 if not found:
   print '\nERROR: Sniper has not been compiled. Please compile Sniper before trying to run an application.\n'
