@@ -1,1 +1,1 @@
-modules = ('splash2', 'parsec', 'cpu2006', 'npb', 'jikes', 'local')
+modules = ('splash2', 'parsec', 'cpu2006', 'cpu2006_pinballs', 'npb', 'jikes', 'local')
