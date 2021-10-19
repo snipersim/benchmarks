@@ -1,4 +1,4 @@
-FROM centos:6 AS builder
+FROM centos:6 AS basebuilder
 # Fix main repos, from https://stackoverflow.com/a/29559374
 RUN sed -i '/^mirrorlist/s/^/#/;/^#baseurl/{s/#//;s/mirror.centos.org\/centos\/$releasever/vault.centos.org\/6.10/}' /etc/yum.repos.d/*B*
 # Install wget and install a new repository for the devtoolset-2 (gcc-4.8)
@@ -80,6 +80,8 @@ RUN cd /tmp && \
     rm -rf /tmp/* /var/tmp/*
 # Add Python and Git to the path
 ENV PATH /usr/local/bin/:$PATH
+
+FROM basebuilder AS builder
 # Setup the user in your environment
 RUN useradd --create-home -s /bin/bash user
 USER user
@@ -147,7 +149,7 @@ ENV PATH /usr/local/bin/:$PATH
 # Copy the compiled binaries from the previous docker image
 COPY --from=builder /usr/local /usr/local/
 # Set up a copy of the benchmarks root
-RUN git clone http://snipersim.org/git/benchmarks.git && cd benchmarks && git checkout -q 06d3a79ccc3deea71d382e6038ecbe3a39e54156
+RUN git clone http://snipersim.org/git/benchmarks.git && cd benchmarks && git checkout -q a7966d67872a471370637ab0f170d4530fe54699
 RUN make -C ./benchmarks/tools/hooks buildscripts
 # Copy benchmarks from the previous docker image
 COPY --from=builder /home/user/benchmarks/local/pi/pi benchmarks/local/pi/pi
