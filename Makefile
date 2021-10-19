@@ -25,8 +25,10 @@ clean:
 	make -C parsec clean
 	make -C npb clean
 	make -C local clean
-	make -C cpu2006_pinballs clean
 	-make -C cpu2006 clean
+
+cpu2006_pinballs_clean:
+	make -C cpu2006_pinballs clean
 
 dependencies:
 	$(BENCHMARKS_ROOT)/tools/scripts/checkdependencies.py
