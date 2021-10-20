@@ -26,6 +26,9 @@ run: build
 	docker run --rm -it $(DOCKERLOCAL_IMAGE)
 
 build: Dockerfile
+ifndef SNIPER_GIT_REPO
+	$(error Please set the SNIPER_GIT_REPO variable)
+endif
 	docker build -f ./Dockerfile --target dockerhub --build-arg SNIPER_GIT_REPO=$(SNIPER_GIT_REPO) -t $(DOCKERLOCAL_IMAGE) .
 
 # Build recipe to generate the Docker Hub images
