@@ -3,6 +3,7 @@ DOCKERLOCAL_IMAGE=benchmarks-$(USER):latest
 # Docker Hub recipes
 DOCKERHUB_BUILDER_IMAGE=snipersim/benchmarks-builder:latest
 DOCKERHUB_IMAGE=snipersim/benchmarks:latest
+DOCKERHUB_SNIPER_IMAGE=snipersim/snipersim:latest
 # Passthrough recipes
 DOCKERBASE_IMAGE=benchmarks-basebuilder-$(USER):latest
 DOCKERPASSTHROUGH_IMAGE=benchmarks-passthrough-$(USER):latest
@@ -10,6 +11,9 @@ DOCKERPASSTHROUGH_IMAGE=benchmarks-passthrough-$(USER):latest
 DOCKERHUB_DIR:=$(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 SNIPER_ROOT=$(DOCKERHUB_DIR)/sniper
 export SNIPER_ROOT
+
+# Use Sniper if a repository was not specified
+SNIPER_GIT_REPO?=https://github.com/snipersim/snipersim
 
 # QUICKSTART: Run 'make' to use the precompiled Docker Hub version of these benchmarks
 #
@@ -35,9 +39,16 @@ endif
 runhub: buildhub
 	docker run --rm -it $(DOCKERHUB_IMAGE)
 
-push: buildhub
+push_benchmarks: buildhub
 	docker push $(DOCKERHUB_BUILDER_IMAGE)
 	docker push $(DOCKERHUB_IMAGE)
+
+push_sniper: build
+	docker rmi --no-prune $(DOCKERHUB_SNIPER_IMAGE) || true
+	docker tag $(DOCKERLOCAL_IMAGE) $(DOCKERHUB_SNIPER_IMAGE)
+	docker push $(DOCKERHUB_SNIPER_IMAGE)
+
+push: push_benchmarks push_sniper
 
 buildhub: Dockerfile.dockerhub
 	docker build -f ./Dockerfile.dockerhub --target builder -t $(DOCKERHUB_BUILDER_IMAGE) .
@@ -51,4 +62,4 @@ buildpassthrough: Dockerfile.passthrough
 	docker build -f ./Dockerfile.dockerhub --target basebuilder -t $(DOCKERBASE_IMAGE) .
 	docker build -f ./Dockerfile.passthrough --target builderpassthrough --build-arg FROMLOCATION=$(DOCKERBASE_IMAGE) --build-arg UID=$(shell id -u) --build-arg GID=$(shell id -g) --build-arg USER="${USER}" --build-arg GROUP=$(shell id --group --name) -t $(DOCKERPASSTHROUGH_IMAGE) .
 
-.PHONY: run build runhub push buildhub runpassthrough buildpassthrough
+.PHONY: run build runhub push push_benchmarks push_sniper buildhub runpassthrough buildpassthrough
