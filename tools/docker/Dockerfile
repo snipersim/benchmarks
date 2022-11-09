@@ -1,7 +1,7 @@
 FROM snipersim/benchmarks:latest AS dockerhub
 # Install a Sniper version from GitHub
 ARG SNIPER_GIT_REPO=https://github.com/snipersim/snipersim
-ARG SNIPER_GIT_TREEISH=d49d0b3e36899572b69dc1812bdfb6bc6cc00d47
+ARG SNIPER_GIT_TREEISH=b58797c3993148174c7de23a18f71fc22e92340f
 ARG PINPLAY_DOWNLOAD=https://snipersim.org/packages/pinplay-dcfg-3.11-pin-3.11-97998-g7ecce2dac-gcc-linux.tar.bz2
 # Tell Sniper to use Pin/Pinplay (instead of SDE) and allow the use of our own version
 ARG USE_PINPLAY=1
