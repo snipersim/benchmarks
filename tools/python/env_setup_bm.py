@@ -36,8 +36,9 @@ def sniper_root():
   # Try to determine what the SNIPER_ROOT should be if it is not set
   bench_root = benchmarks_root()
   snipertry = []
-  snipertry.append(os.path.realpath(os.path.join(bench_root,'..','sniper','run-sniper')))
-  snipertry.append(os.path.realpath(os.path.join(bench_root,'sniper','run-sniper')))
+  for loc in ('sniper','snipersim'):
+    snipertry.append(os.path.realpath(os.path.join(bench_root,'..',loc,'run-sniper')))
+    snipertry.append(os.path.realpath(os.path.join(bench_root,loc,'run-sniper')))
   snipertry.append(os.path.realpath(os.path.join(bench_root,'..','run-sniper')))
 
   for bt in snipertry:
